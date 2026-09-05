@@ -1,8 +1,8 @@
 // Game & drive resolution. A "game" object is transient state for one football
 // game; the caller drives it via startGame -> beginDrive -> resolvePlay.
 
-import { CONFIG, MATCHUP, DEFENSES, PLAY_FAMILIES, GAME_NAMES, playById, targetScore } from './data.js';
-import { effectiveRating, coachEffects } from './state.js';
+import { CONFIG, MATCHUP, DEFENSES, PLAY_FAMILIES, GAME_NAMES, playById, targetScore, pickModifier } from './data.js';
+import { effectiveRating, coachEffects, playLevel } from './state.js';
 import { randInt, randFloat, pick, pickN, chance } from './rng.js';
 
 const RUN_FAMILIES = [PLAY_FAMILIES.INSIDE_RUN, PLAY_FAMILIES.OUTSIDE_RUN];
@@ -12,11 +12,19 @@ function isRun(family) {
 }
 
 export function startGame(run) {
+  // Away games (index 2) carry a random boss modifier.
+  const modifier = run.gameIndex === 2 ? pickModifier() : null;
+  let target = targetScore(run.round, run.gameIndex);
+  if (modifier?.targetMult) target = Math.round(target * modifier.targetMult);
+  const drivesTotal = CONFIG.drivesPerGame + (modifier?.extraDrives || 0);
+
   return {
     round: run.round,
     gameIndex: run.gameIndex,
     name: GAME_NAMES[run.gameIndex],
-    target: targetScore(run.round, run.gameIndex),
+    modifier,
+    drivesTotal,
+    target,
     score: 0,
     driveNum: 0,
     over: false,
@@ -44,7 +52,7 @@ function chooseDefense() {
 
 // Start a new drive. Returns whether the game continues (false => no drives left).
 export function beginDrive(game, run) {
-  if (game.driveNum >= CONFIG.drivesPerGame) {
+  if (game.driveNum >= game.drivesTotal) {
     game.over = true;
     game.won = game.score >= game.target;
     return false;
@@ -81,9 +89,15 @@ export function resolvePlay(game, run, playId) {
   const raw = randInt(play.base[0], play.base[1]);
   const rf = ratingFactor(run, play.positions);
   const coachMult = isRun(play.family) ? eff.runMult : eff.passMult;
+  const levelMult = 1 + playLevel(run, play.id) * CONFIG.playLevelYardBonus;
   const luck = randFloat(0.8, 1.25);
 
-  let yards = Math.round(raw * matchup * rf * coachMult * luck);
+  // Boss modifier: per-family yard multiplier or a hard disable.
+  const mod = game.modifier;
+  const disabled = mod?.disableFamilies?.includes(play.family);
+  const modMult = disabled ? 0 : mod?.familyMult?.[play.family] ?? 1;
+
+  let yards = Math.round(raw * matchup * rf * coachMult * levelMult * modMult * luck);
 
   // Incompletions / stuffs: a bad matchup can produce nothing.
   const incomplete = !isRun(play.family) && yards <= 0;
@@ -185,7 +199,7 @@ function resolveFourthDown(game, run, result, eff) {
 
 function endDrive(game) {
   game.driveOver = true;
-  if (game.driveNum >= CONFIG.drivesPerGame) {
+  if (game.driveNum >= game.drivesTotal) {
     game.over = true;
     game.won = game.score >= game.target;
   }
@@ -199,9 +213,10 @@ function matchupLabel(m) {
 }
 
 // Roll for an injury at game end. Mutates run.injuries. Returns injury or null.
-export function rollInjury(run) {
+export function rollInjury(run, game) {
   const eff = coachEffects(run);
-  if (!chance(CONFIG.injuryChancePerGame * eff.injuryMult)) return null;
+  const modMult = game?.modifier?.injuryMult || 1;
+  if (!chance(CONFIG.injuryChancePerGame * eff.injuryMult * modMult)) return null;
   const posId = pick(run.roster.map((p) => p.id));
   const hit = randInt(CONFIG.injuryRatingHit[0], CONFIG.injuryRatingHit[1]);
   run.injuries.push({ posId, hit });

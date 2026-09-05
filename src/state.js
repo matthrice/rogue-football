@@ -1,23 +1,34 @@
 // Run state + persistence. The "run" is the roguelike progress; a "game" is
 // built transiently by the engine and not persisted mid-play.
 
-import { POSITIONS, STARTER_DECK_IDS, coachById, CONFIG } from './data.js';
+import { POSITIONS, STARTER_DECK_IDS, coachById, CONFIG, randomTeamName } from './data.js';
 
 const SAVE_KEY = 'rf_save_v1';
 
 export function newRun() {
   return {
+    teamName: randomTeamName(),
     round: 1,
     gameIndex: 0, // 0=Scrimmage, 1=Home, 2=Away
     cash: 0,
     fandomTier: 0,
     deck: STARTER_DECK_IDS.slice(),
+    playLevels: {}, // { playId: level } — leveled plays gain base yards
     roster: POSITIONS.map((p) => ({ id: p.id, label: p.label, rating: p.rating })),
     injuries: [], // [{ posId, hit }] — cleared between rounds
     coaches: [], // coach ids owned
     dead: false,
     reachedRound: 1,
   };
+}
+
+export function playLevel(run, id) {
+  return (run.playLevels && run.playLevels[id]) || 0;
+}
+
+// Unique play ids in the deck (for the "Level Up" shop section).
+export function uniquePlayIds(run) {
+  return [...new Set(run.deck)];
 }
 
 // -------- persistence --------
@@ -69,7 +80,10 @@ export function isInjured(run, posId) {
 
 // -------- coaches / aggregated effects --------
 export function coachEffects(run) {
-  const eff = { runMult: 1, passMult: 1, injuryMult: 1, handBonus: 0, fgBonus: 0, winCash: 0 };
+  const eff = {
+    runMult: 1, passMult: 1, injuryMult: 1, handBonus: 0, fgBonus: 0, winCash: 0,
+    healPerGame: 0, upgradeDiscount: 0, fandomIncomeBonus: 0, freeReroll: false,
+  };
   for (const id of run.coaches) {
     const c = coachById(id);
     if (!c) continue;
@@ -79,8 +93,20 @@ export function coachEffects(run) {
     if (c.effect.handBonus) eff.handBonus += c.effect.handBonus;
     if (c.effect.fgBonus) eff.fgBonus += c.effect.fgBonus;
     if (c.effect.winCash) eff.winCash += c.effect.winCash;
+    if (c.effect.healPerGame) eff.healPerGame += c.effect.healPerGame;
+    if (c.effect.upgradeDiscount) eff.upgradeDiscount += c.effect.upgradeDiscount;
+    if (c.effect.fandomIncomeBonus) eff.fandomIncomeBonus += c.effect.fandomIncomeBonus;
+    if (c.effect.freeReroll) eff.freeReroll = true;
   }
   return eff;
+}
+
+// Strength Coach: reduce active injuries by `amount` rating; drop healed ones.
+export function healInjuries(run, amount) {
+  if (!amount) return;
+  run.injuries = run.injuries
+    .map((i) => ({ ...i, hit: i.hit - amount }))
+    .filter((i) => i.hit > 0);
 }
 
 export function hasCoach(run, id) {

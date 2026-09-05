@@ -102,6 +102,18 @@ html, body {
   transition: width 0.5s ease;
 }
 
+.modifier-banner {
+  background: rgba(255, 107, 94, 0.14);
+  border: 1px solid rgba(255, 107, 94, 0.4);
+  color: #ffd8d2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  margin-bottom: 10px;
+}
+.modifier-banner b { color: var(--bad); }
+
 /* ---------- Field ---------- */
 .field {
   display: flex;
@@ -195,7 +207,8 @@ html, body {
 .results-screen { text-align: center; padding-top: 8vh; }
 .result-win { font-size: 40px; color: var(--good); margin: 0; }
 .result-loss { font-size: 40px; color: var(--bad); margin: 0; }
-.final-score { color: var(--muted); margin: 6px 0 18px; }
+.final-score { color: var(--muted); margin: 6px 0 6px; }
+.result-mod { color: var(--bad); font-size: 13px; margin-bottom: 14px; }
 .cash-note { font-size: 20px; font-weight: 800; color: var(--accent); margin: 12px 0; }
 .injury-note, .gameover-note {
   background: var(--panel);
@@ -208,8 +221,12 @@ html, body {
 /* ---------- Shop ---------- */
 .shop-head { margin-bottom: 8px; }
 .shop-head h2 { margin: 0; }
+.team-name { color: var(--accent); font-size: 13px; font-weight: 700; margin: 2px 0; }
 .money { font-size: 16px; font-weight: 700; margin: 4px 0; }
 .next-game { color: var(--muted); font-size: 13px; }
+.next-warn { color: var(--bad); font-size: 12.5px; margin-top: 3px; }
+.level-card { border-color: #3a4a2a; }
+.level-card .sc-name { color: var(--accent); }
 .shop-sec { margin: 20px 0 8px; font-size: 15px; color: var(--accent); }
 
 .roster-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }

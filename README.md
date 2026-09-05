@@ -27,9 +27,19 @@ for playing (and sharing) on an iPhone.
 Spend cash earned from wins:
 - **Upgrade players** — raise a position's rating.
 - **Fandom** — higher tier = more cash per future win (your interest engine).
-- **Playbook** — buy new plays into your deck.
-- **Coaches** — passive perks (bigger hand, fewer injuries, better FGs, etc.).
+- **Playbook** — buy new plays into your deck (20+ plays across all families).
+- **Level up plays** — pour cash into a favorite play to boost its yardage (Balatro-style).
+- **Coaches** — passive perks: bigger hand, fewer injuries, injury healing,
+  cheaper upgrades, free rerolls, better FGs, more income, and more.
 - **Reroll** the shop's offerings.
+
+## Away games have a twist
+
+Every 3rd game (the Away game) rolls a random **boss modifier** — e.g.
+*Stiff Wind* (deep passes gutted), *Mud Bowl* (runs slowed), *Rivalry*
+(double injuries, +50% cash), *Shootout* (higher target, double cash),
+*Prime Time* (extra drive), *Lockdown Secondary* (passes slowed). Adapt your
+play-calling to the conditions.
 
 Your in-progress run auto-saves in the browser, so you can close the tab and
 pick it back up.
@@ -45,11 +55,14 @@ python3 -m http.server 8000
 
 ## Play on your phone / share with friends (GitHub Pages)
 
-1. Push this repo to GitHub.
-2. Repo **Settings → Pages** → *Build and deployment* → **Deploy from a branch**.
-3. Pick the branch and the **`/ (root)`** folder, then **Save**.
-4. GitHub gives you a URL (e.g. `https://<you>.github.io/rogue-football/`).
-   Open it on an iPhone and send the link to friends.
+Deployment is automated by GitHub Actions (`.github/workflows/deploy.yml`) —
+every push publishes the site. **One-time setup:**
+
+1. Repo **Settings → Pages** → *Build and deployment* → **Source: GitHub Actions**.
+2. Push (or re-run the workflow from the **Actions** tab). When it finishes,
+   the run shows the live URL (e.g. `https://<you>.github.io/rogue-football/`).
+3. Open it on an iPhone and send the link to friends. Every later push
+   redeploys automatically.
 
 ## Project layout
 

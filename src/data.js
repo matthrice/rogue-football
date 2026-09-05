@@ -28,6 +28,10 @@ export const CONFIG = {
   // Player upgrade: +ratingPerUpgrade for costToUpgrade(rating)
   ratingPerUpgrade: 4,
   maxRating: 99,
+
+  // Play leveling: each level adds this fraction to a play's base yards.
+  playLevelYardBonus: 0.15,
+  maxPlayLevel: 5,
 };
 
 // Target score curve. Round r (1-based), game index g (0=Scrimmage,1=Home,2=Away).
@@ -53,6 +57,11 @@ export function upgradeCost(rating) {
 
 export function fandomUpgradeCost(tier) {
   return CONFIG.fandomBaseCost + tier * CONFIG.fandomCostStep;
+}
+
+// Leveling a play up costs more at higher levels.
+export function levelUpCost(level) {
+  return 4 + level * 3;
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +141,15 @@ export const PLAYS = [
   { id: 'go', name: 'Go Route', family: PLAY_FAMILIES.DEEP_PASS, base: [0, 30], positions: ['QB1', 'WR1'], rarity: 'rare', desc: 'Take the top off. High variance.' },
   { id: 'pafake', name: 'PA Boot', family: PLAY_FAMILIES.PLAY_ACTION, base: [2, 18], positions: ['QB1', 'WR2'], rarity: 'uncommon', desc: 'Fake the run, hit the flat/deep.' },
   { id: 'padeep', name: 'PA Deep Shot', family: PLAY_FAMILIES.PLAY_ACTION, base: [0, 26], positions: ['QB1', 'WR1'], rarity: 'rare', desc: 'Play-action bomb.' },
+  { id: 'counter', name: 'Counter', family: PLAY_FAMILIES.INSIDE_RUN, base: [2, 10], positions: ['RB1', 'OL'], rarity: 'uncommon', desc: 'Misdirection inside run.' },
+  { id: 'sneak', name: 'QB Sneak', family: PLAY_FAMILIES.INSIDE_RUN, base: [2, 4], positions: ['QB1', 'OL'], rarity: 'common', desc: 'Automatic short yardage. Very reliable.' },
+  { id: 'jet', name: 'Jet Sweep', family: PLAY_FAMILIES.OUTSIDE_RUN, base: [0, 14], positions: ['WR2', 'OL'], rarity: 'uncommon', desc: 'Speed to the edge — high ceiling.' },
+  { id: 'flat', name: 'Checkdown', family: PLAY_FAMILIES.SHORT_PASS, base: [3, 7], positions: ['QB1', 'RB1'], rarity: 'common', desc: 'Safe dump-off. Low variance.' },
+  { id: 'out', name: 'Out Route', family: PLAY_FAMILIES.SHORT_PASS, base: [4, 11], positions: ['QB1', 'WR2'], rarity: 'common', desc: 'Snap to the sideline.' },
+  { id: 'dig', name: 'Dig', family: PLAY_FAMILIES.SHORT_PASS, base: [5, 13], positions: ['QB1', 'WR1'], rarity: 'uncommon', desc: 'Intermediate crosser.' },
+  { id: 'fade', name: 'Fade', family: PLAY_FAMILIES.DEEP_PASS, base: [0, 24], positions: ['QB1', 'WR1'], rarity: 'uncommon', desc: 'Back-shoulder shot. Great near the goal line.' },
+  { id: 'rpo', name: 'RPO', family: PLAY_FAMILIES.PLAY_ACTION, base: [3, 14], positions: ['QB1', 'RB1', 'WR2'], rarity: 'uncommon', desc: 'Run-pass option — reads the box.' },
+  { id: 'flea', name: 'Flea Flicker', family: PLAY_FAMILIES.PLAY_ACTION, base: [0, 34], positions: ['QB1', 'RB1', 'WR1'], rarity: 'rare', desc: 'Trick play. Boom or bust bomb.' },
 ];
 
 export const STARTER_DECK_IDS = PLAYS.filter((p) => p.starter).flatMap((p) => [p.id, p.id]); // 2 copies each
@@ -151,10 +169,34 @@ export const COACHES = [
   { id: 'filmroom', name: 'Film Room Analyst', tier: 2, cost: 8, desc: '+1 play in hand each down (more answers).', effect: { handBonus: 1 } },
   { id: 'st_coach', name: 'Special Teams Coach', tier: 1, cost: 5, desc: '+10 effective FG range & accuracy.', effect: { fgBonus: 10 } },
   { id: 'motivator', name: 'Motivator', tier: 2, cost: 10, desc: '+2 cash on every game win.', effect: { winCash: 2 } },
+  { id: 'strength', name: 'Strength Coach', tier: 2, cost: 9, desc: 'Injured players recover 8 rating before each game.', effect: { healPerGame: 8 } },
+  { id: 'qbguru', name: 'QB Guru', tier: 1, cost: 6, desc: '+10% yards on pass plays.', effect: { passMult: 1.1 } },
+  { id: 'gm', name: 'General Manager', tier: 1, cost: 7, desc: 'Player upgrades cost $2 less.', effect: { upgradeDiscount: 2 } },
+  { id: 'hype', name: 'Hype Man', tier: 2, cost: 9, desc: '+$1 per fandom tier on every win.', effect: { fandomIncomeBonus: 1 } },
+  { id: 'gambler', name: 'The Gambler', tier: 1, cost: 6, desc: 'Rerolling the shop is free.', effect: { freeReroll: true } },
 ];
 
 export function coachById(id) {
   return COACHES.find((c) => c.id === id);
+}
+
+// ---------------------------------------------------------------------------
+// Boss-game modifiers — applied to the Away game for run variety.
+// familyMult: per-family yard multipliers. disableFamilies: families that fail.
+// targetMult / cashMult / injuryMult scale the target, reward, and injury odds.
+// extraDrives: adds possessions.
+// ---------------------------------------------------------------------------
+export const MODIFIERS = [
+  { id: 'wind', name: 'Stiff Wind', desc: 'Deep balls get knocked down — deep passes gutted.', familyMult: { [PLAY_FAMILIES.DEEP_PASS]: 0.35 } },
+  { id: 'mud', name: 'Mud Bowl', desc: 'Sloppy field — runs lose 30% of their yards.', familyMult: { [PLAY_FAMILIES.INSIDE_RUN]: 0.7, [PLAY_FAMILIES.OUTSIDE_RUN]: 0.7 } },
+  { id: 'rivalry', name: 'Rivalry Game', desc: 'Chippy and dangerous — 2× injury risk, but +50% cash.', injuryMult: 2, cashMult: 1.5 },
+  { id: 'shootout', name: 'Shootout', desc: 'Track meet — target +30%, but cash is doubled.', targetMult: 1.3, cashMult: 2 },
+  { id: 'primetime', name: 'Prime Time', desc: 'Extra possession under the lights — +1 drive, target +15%.', extraDrives: 1, targetMult: 1.15 },
+  { id: 'lockdown', name: 'Lockdown Secondary', desc: 'Elite DBs — all passes lose 25% of their yards.', familyMult: { [PLAY_FAMILIES.SHORT_PASS]: 0.75, [PLAY_FAMILIES.DEEP_PASS]: 0.75 } },
+];
+
+export function pickModifier() {
+  return MODIFIERS[Math.floor(Math.random() * MODIFIERS.length)];
 }
 
 // ---------------------------------------------------------------------------

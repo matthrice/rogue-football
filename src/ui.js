@@ -3,9 +3,9 @@
 
 import {
   CONFIG, DEFENSES, GAME_NAMES, playById, coachById,
-  targetScore, upgradeCost, fandomUpgradeCost,
+  targetScore, upgradeCost, fandomUpgradeCost, levelUpCost,
 } from './data.js';
-import { effectiveRating, isInjured, hasCoach } from './state.js';
+import { effectiveRating, isInjured, hasCoach, coachEffects, playLevel, uniquePlayIds } from './state.js';
 
 const app = () => document.getElementById('app');
 
@@ -60,12 +60,12 @@ export function renderGame(run, game, actions, opts = {}) {
   const header = el('div', 'game-header');
   const left = el('div', 'gh-left');
   left.append(el('div', 'opp-name', `${GAME_NAMES[game.gameIndex]} vs ${opts.opponent || 'Opponent'}`));
-  left.append(el('div', 'round-tag', `Round ${game.round}`));
+  left.append(el('div', 'round-tag', `${run.teamName || 'Your Team'} · Round ${game.round}`));
   const right = el('div', 'gh-right');
   const scoreLine = el('div', 'score-line');
   scoreLine.innerHTML = `<span class="score">${game.score}</span> / <span class="target">${game.target}</span>`;
   right.append(scoreLine);
-  right.append(el('div', 'drive-tag', `Drive ${game.driveNum}/${CONFIG.drivesPerGame}`));
+  right.append(el('div', 'drive-tag', `Drive ${game.driveNum}/${game.drivesTotal}`));
   header.append(left, right);
   wrap.append(header);
 
@@ -75,6 +75,13 @@ export function renderGame(run, game, actions, opts = {}) {
   fill.style.width = Math.min(100, (game.score / game.target) * 100) + '%';
   bar.append(fill);
   wrap.append(bar);
+
+  // Boss modifier banner (Away games)
+  if (game.modifier) {
+    const mb = el('div', 'modifier-banner');
+    mb.innerHTML = `⚡ <b>${game.modifier.name}</b> — ${game.modifier.desc}`;
+    wrap.append(mb);
+  }
 
   // Field
   wrap.append(renderField(game));
@@ -147,6 +154,9 @@ export function renderResults(run, game, info, actions) {
   const wrap = el('div', 'screen results-screen');
   wrap.append(el('h2', game.won ? 'result-win' : 'result-loss', game.won ? 'WIN' : 'LOSS'));
   wrap.append(el('div', 'final-score', `Final: ${game.score} — Target: ${game.target}`));
+  if (game.modifier) {
+    wrap.append(el('div', 'result-mod', `⚡ ${game.modifier.name}`));
+  }
 
   if (info.injury) {
     const inj = el('div', 'injury-note');
@@ -173,22 +183,27 @@ export function renderResults(run, game, info, actions) {
 // -------------------------------------------------------------------------
 export function renderShop(run, shop, actions) {
   clear();
+  const eff = coachEffects(run);
   const wrap = el('div', 'screen shop-screen');
 
   const head = el('div', 'shop-head');
   head.append(el('h2', null, 'Locker Room'));
+  head.append(el('div', 'team-name', `🏟️ ${run.teamName || 'Your Team'}`));
   const money = el('div', 'money');
   money.innerHTML = `💰 $${run.cash} &nbsp;·&nbsp; 📣 Fandom ${run.fandomTier}`;
   head.append(money);
   const next = GAME_NAMES[run.gameIndex];
   head.append(el('div', 'next-game', `Next up: ${next} — Round ${run.round} (target ${targetScore(run.round, run.gameIndex)})`));
+  if (run.gameIndex === 2) {
+    head.append(el('div', 'next-warn', '⚡ Away game — expect a twist at kickoff.'));
+  }
   wrap.append(head);
 
   // Roster
   wrap.append(el('h3', 'shop-sec', 'Upgrade Players'));
   const roster = el('div', 'roster-grid');
   run.roster.forEach((p) => {
-    const cost = upgradeCost(p.rating);
+    const cost = Math.max(1, upgradeCost(p.rating) - eff.upgradeDiscount);
     const cardEl = el('div', 'roster-card');
     const injured = isInjured(run, p.id);
     cardEl.append(el('div', 'rc-label', p.label + (injured ? ' 🩹' : '')));
@@ -230,6 +245,25 @@ export function renderShop(run, shop, actions) {
   });
   wrap.append(playRow);
 
+  // Level up owned plays
+  wrap.append(el('h3', 'shop-sec', 'Level Up Plays'));
+  const levelRow = el('div', 'shop-row');
+  uniquePlayIds(run).forEach((id) => {
+    const p = playById(id);
+    const lvl = playLevel(run, id);
+    const card = el('div', 'shop-card level-card');
+    card.append(el('div', 'sc-name', `${p.name} ${'★'.repeat(lvl)}`));
+    card.append(el('div', 'sc-desc', `Lv ${lvl}/${CONFIG.maxPlayLevel} · +${Math.round(lvl * CONFIG.playLevelYardBonus * 100)}% yards`));
+    const maxed = lvl >= CONFIG.maxPlayLevel;
+    const cost = levelUpCost(lvl);
+    const btn = el('button', 'btn btn-small', maxed ? 'Maxed' : `Level ↑  $${cost}`);
+    btn.disabled = maxed || run.cash < cost;
+    btn.onclick = () => actions.buyLevel(id);
+    card.append(btn);
+    levelRow.append(card);
+  });
+  wrap.append(levelRow);
+
   // Coaches
   wrap.append(el('h3', 'shop-sec', 'Coaches (passive perks)'));
   const coachRow = el('div', 'shop-row');
@@ -249,8 +283,9 @@ export function renderShop(run, shop, actions) {
 
   // Footer: reroll + continue
   const footer = el('div', 'shop-footer');
-  const reroll = el('button', 'btn btn-secondary', `Reroll  $${CONFIG.rerollCost}`);
-  reroll.disabled = run.cash < CONFIG.rerollCost;
+  const rerollCost = eff.freeReroll ? 0 : CONFIG.rerollCost;
+  const reroll = el('button', 'btn btn-secondary', rerollCost ? `Reroll  $${rerollCost}` : 'Reroll  FREE');
+  reroll.disabled = run.cash < rerollCost;
   reroll.onclick = actions.reroll;
   footer.append(reroll);
   const play = el('button', 'btn btn-primary', `Play ${next} →`);

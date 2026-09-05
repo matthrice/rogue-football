@@ -2,7 +2,7 @@
 
 import {
   CONFIG, PLAYS, COACHES, playById, coachById,
-  gameReward, upgradeCost, fandomUpgradeCost, randomTeamName,
+  gameReward, upgradeCost, fandomUpgradeCost, levelUpCost, randomTeamName,
 } from './data.js';
 import * as State from './state.js';
 import * as Engine from './engine.js';
@@ -46,6 +46,8 @@ function buildShop() {
 // Game flow
 // ---------------------------------------------------------------------------
 function startNextGame() {
+  // Strength Coach: patch up injuries before kickoff.
+  State.healInjuries(run, State.coachEffects(run).healPerGame);
   opponent = randomTeamName();
   game = Engine.startGame(run);
   Engine.beginDrive(game, run);
@@ -77,12 +79,15 @@ function callPlay(id) {
 }
 
 function endGame() {
-  const injury = Engine.rollInjury(run);
+  const injury = Engine.rollInjury(run, game);
   const info = { injury, reward: 0, advancedRound: false };
 
   if (game.won) {
     const eff = State.coachEffects(run);
-    info.reward = gameReward(run.round, run.gameIndex, run.fandomTier) + eff.winCash;
+    let reward = gameReward(run.round, run.gameIndex, run.fandomTier) + eff.winCash;
+    reward += eff.fandomIncomeBonus * run.fandomTier; // Hype Man
+    if (game.modifier?.cashMult) reward = Math.round(reward * game.modifier.cashMult);
+    info.reward = reward;
     run.cash += info.reward;
     const adv = State.advanceAfterWin(run);
     info.advancedRound = adv.advancedRound;
@@ -105,7 +110,7 @@ function toShop() {
 
 function upgradePlayer(posId) {
   const p = State.rosterPos(run, posId);
-  const cost = upgradeCost(p.rating);
+  const cost = Math.max(1, upgradeCost(p.rating) - State.coachEffects(run).upgradeDiscount);
   if (run.cash < cost || p.rating >= CONFIG.maxRating) return;
   run.cash -= cost;
   p.rating = Math.min(CONFIG.maxRating, p.rating + CONFIG.ratingPerUpgrade);
@@ -141,9 +146,21 @@ function buyCoach(entry) {
 }
 
 function reroll() {
-  if (run.cash < CONFIG.rerollCost) return;
-  run.cash -= CONFIG.rerollCost;
+  const cost = State.coachEffects(run).freeReroll ? 0 : CONFIG.rerollCost;
+  if (run.cash < cost) return;
+  run.cash -= cost;
   buildShop();
+  State.save(run);
+  UI.renderShop(run, shop, actions);
+}
+
+function buyLevel(playId) {
+  const level = State.playLevel(run, playId);
+  if (level >= CONFIG.maxPlayLevel) return;
+  const cost = levelUpCost(level);
+  if (run.cash < cost) return;
+  run.cash -= cost;
+  run.playLevels[playId] = level + 1;
   State.save(run);
   UI.renderShop(run, shop, actions);
 }
@@ -177,6 +194,7 @@ const actions = {
   upgradeFandom,
   buyPlay,
   buyCoach,
+  buyLevel,
   reroll,
 };
 
